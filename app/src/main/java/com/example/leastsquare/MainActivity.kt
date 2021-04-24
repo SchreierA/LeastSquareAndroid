@@ -3,11 +3,16 @@ package com.example.leastsquare
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.jjoe64.graphview.GraphView
+import com.jjoe64.graphview.series.DataPoint
+import com.jjoe64.graphview.series.LineGraphSeries
+import com.jjoe64.graphview.series.PointsGraphSeries
 
 
 class MainActivity : AppCompatActivity() {
@@ -17,6 +22,8 @@ class MainActivity : AppCompatActivity() {
     private var minX = 9999999.0
     private var maxY = -9999999.0
     private var minY = 9999999.0
+    private var meanX = 0.0
+    private var meanY = 0.0
 
     private var pointCount = 0
     private var sumX = 0.0
@@ -52,35 +59,33 @@ class MainActivity : AppCompatActivity() {
             clearedLines.add(it.replace(" ", ""))
         }
         clearedLines.forEach { it ->
-            it.split(",").let{ numbers ->
-                val coord = numbers[0].toDoubleOrNull()
-                val value = numbers[1].toDoubleOrNull()
-                if (coord != null && value != null) {
-                    valuePairList.add(Pair(coord, value))
-                    if (coord >= maxX) maxX = coord
-                    else if (coord <= minX) minX = coord
-                    if (value >= maxY) maxY = value
-                    else if (value <= minY) minY = value
+            try {
+                it.split(",").let { numbers ->
+                    val coord = numbers[0].toDoubleOrNull()
+                    val value = numbers[1].toDoubleOrNull()
+                    if (coord != null && value != null) {
+                        valuePairList.add(Pair(coord, value))
+                        if (coord >= maxX) maxX = coord
+                        else if (coord <= minX) minX = coord
+                        if (value >= maxY) maxY = value
+                        else if (value <= minY) minY = value
+                    }
                 }
-            }
+            } catch (e: Exception) { Log.e("asd", "$e")}
         }
-        //drawPoints()
+        valuePairList.sortBy{ it.first }
+        drawPoints()
         updateButton()
     }
 
     private fun drawPoints(){
-        val height = 500*resources.displayMetrics.density
-        val width = resources.displayMetrics.widthPixels
-        val oneStepSizeX = width / kotlin.math.abs(minX - maxX)
-        val oneStepSizeY = height / kotlin.math.abs(minY - maxY)
-        //TODO draw the coordinate system and position the iws properly, commented out in the mean while
-        valuePairList.forEach{
-            findViewById<LinearLayout>(R.id.coordSystem).addView(
-                    ImageView(this.applicationContext).apply {
-                        background = resources.getDrawable(R.drawable.ic_baseline_brightness_1_24)
-                    }
-            )
+        val dataPointList = mutableListOf<DataPoint>()
+        valuePairList.forEach {
+            dataPointList.add(DataPoint(it.first, it.second))
         }
+        findViewById<GraphView>(R.id.graph).addSeries(
+            PointsGraphSeries<DataPoint>(dataPointList.toTypedArray())
+        )
     }
 
     private fun updateButton(){
@@ -94,26 +99,39 @@ class MainActivity : AppCompatActivity() {
 
     private fun leastSquare(): String{
         val slope = calcSlope()
-        val yInterception = (sumY-slope*sumX)/pointCount
+        val yInterception = meanY - (slope*meanX)
+        drawFunction(slope, yInterception)
         return "y = $slope x + $yInterception".also{
             findViewById<TextView>(R.id.solutionTextView).text = it
         }
+    }
+
+    private fun drawFunction(slope: Double, yInterception: Double){
+        val dataPointList = mutableListOf<DataPoint>()
+        for (i in 0..100){
+            dataPointList.add(DataPoint(i.toDouble(), slope*i+yInterception))
+        }
+        findViewById<GraphView>(R.id.graph).addSeries(
+            LineGraphSeries<DataPoint>(dataPointList.toTypedArray())
+        )
     }
 
     private fun calcSlope(): Double{
         pointCount = valuePairList.lastIndex + 1
         sumX = 0.0
         sumY = 0.0
-        var sumXY = 0.0
-        var sumXSquare = 0.0
         valuePairList.forEach{
             sumX += it.first
             sumY += it.second
-            sumXY += it.second * it.first
-            sumXSquare += it.first * it.first
         }
-        val a = pointCount*sumXY-sumY*sumY
-        val b = pointCount*sumXSquare-sumX*sumX
-        return a/b
+        var numer  = 0.0
+        var denom  = 0.0
+        meanX = sumX/pointCount
+        meanY = sumY/pointCount
+        valuePairList.forEach{
+            numer += ((it.first-meanX) * (it.second-meanY))
+            denom += ((it.first-meanX) * (it.first-meanX))
+        }
+        return numer / denom
     }
 }
